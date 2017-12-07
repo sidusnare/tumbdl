@@ -52,7 +52,7 @@ Safemode options:
 
 	You can get your user agent by opening this URL:
 		https://www.google.com/search?q=what+is+my+user+agent+string'
-  
+cookieJar=True
 while getopts c:u:h opts; do
 	case "${opts}" in
 		h)
@@ -61,6 +61,7 @@ while getopts c:u:h opts; do
 			;;
 		c)
 			cookieFile="${OPTARG}"
+			cookieJar=False
 			if [ ! -e "${cookieFile}" ]; then
 				echo "Unable to find ${cookieFile}, please check and try again" >&2
 				exit 1
@@ -82,8 +83,8 @@ fi
 url=$( sed 's/\/$//g' <<< "${url}")
 
 # create target dir
-mkdir "$targetDir"
-touch "$targetDir/articles.txt"
+mkdir "${targetDir}"
+touch "${targetDir}/articles.txt"
 
 # create cookie jar (not really needed atm)
 if [ -z "${cookieFile}" ]; then
@@ -94,53 +95,54 @@ archiveLink="/archive/"
 
 # loop over archive pages
 endOfArchive=0
-while [[ $endOfArchive -ne 1 ]]
+while [[ ${endOfArchive} -ne 1 ]]
 do
   # get archive page
-  if [ -d "$cookieFile" ]; then
-    archivePage=$(curl "$curlOptions" -c "$cookieFile" --referer "https://${url}" -A "$userAgent" "${url}${archiveLink}")
+  # If we are passed a cookie file, just use it right off, don't init it with -c
+  if [ "${cookieJar}" == 'True'  ]; then
+    archivePage=$(curl "${curlOptions[@]}" -c "${cookieFile}" --referer "https://${url}" -A "${userAgent}" "${url}${archiveLink}")
   else
-    archivePage=$(curl "$curlOptions" -b "$cookieFile" --referer "https://${url}" -A "$userAgent" "${url}${archiveLink}")
+    archivePage=$(curl "${curlOptions[@]}" -b "${cookieFile}" --referer "https://${url}" -A "${userAgent}" "${url}${archiveLink}")
   fi  
   echo "Retrieving archive page ${url}${archiveLink}..."
 
   # extract links to posts
-  monthPosts=$( grep -o -P "/post/[0-9]*.*?\"" <<< "$archivePage" | sed 's/"//g')
+  monthPosts=$( grep -o -P "/post/[0-9]*.*?\"" <<< "${archivePage}" | sed 's/"//g')
 
   # process all posts on this archive page
-  for postURL in $monthPosts
+  for postURL in ${monthPosts}
   do
     # check if post page has already been processed before
-    if grep -Fxq "$postURL" "$targetDir/articles.txt"
+    if grep -Fxq "${postURL}" "${targetDir}/articles.txt"
     then
-      echo "Already got ${url}$postURL, skipping."
+      echo "Already got ${url}${postURL}, skipping."
     else
       # get the image links (can be multiple images in sets)
-      echo "Retrieving post ${url}$postURL..."
-      postPage=$(curl "${curlOptions[@]}" -b "$cookieFile" --referer "https://${url}${archiveLink}" -A "$userAgent" "${url}${postURL}")
-      imageLinks=$( grep -o -P "http[s]*://([0-9]*.)?media\.tumblr\.com/([A-Za-z0-9]*/)?tumblr_[A-Za-z0-9]*_[0-9]*\.[a-z]*" <<< "$postPage" | sort | uniq)
+      echo "Retrieving post ${url}${postURL}..."
+      postPage=$(curl "${curlOptions[@]}" -b "${cookieFile}" --referer "https://${url}${archiveLink}" -A "${userAgent}" "${url}${postURL}")
+      imageLinks=$( grep -o -P "http[s]*://([0-9]*.)?media\.tumblr\.com/([A-Za-z0-9]*/)?tumblr_[A-Za-z0-9]*_[0-9]*\.[a-z]*" <<< "${postPage}" | sort | uniq)
       # remove resolution info from image filename
-      baseImages=$(echo "$imageLinks" | grep -o "tumblr_.*$" | sed 's/_[0-9]*\.\w*//g' | uniq)
+      baseImages=$( grep -o "tumblr_.*$" <<< "${imageLinks}" | sed 's/_[0-9]*\.\w*//g' | uniq)
       # if we encounter any download errors, don't mark the post as archived
       curlError=0
 
       # determine the highest available resolution and download image
-      if [ ! -z "$baseImages" ]
+      if [ ! -z "${baseImages}" ]
       then
 
-        for image in $baseImages
+        for image in ${baseImages}
         do
           # get the image name of image with highest resolution
-          maxResImage=$(echo "$imageLinks" | grep -o "$image.*" | sort -n | head -n 1)
+          maxResImage=$(echo "${imageLinks}" | grep -o "${image}.*" | sort -n | head -n 1)
           # get full image url
-          maxResImageURL=$(echo "$imageLinks" | grep "$maxResImage")
+          maxResImageURL=$(echo "${imageLinks}" | grep "${maxResImage}")
           # download image (if it doesn't exist)
-          if [ -e "$targetDir/$maxResImage" ]
+          if [ -e "${targetDir}/${maxResImage}" ]
           then
             echo "Image exists, skipping."
           else
-            echo "Downloading image $maxResImageURL..."
-            if ! curl "${curlOptions[@]}" -b "${cookieFile}" --referer "https://${url}${postURL}" -A "$userAgent" -o "$targetDir/$maxResImage" "$maxResImageURL" ;then
+            echo "Downloading image ${maxResImageURL}..."
+            if ! curl "${curlOptions[@]}" -b "${cookieFile}" --referer "https://${url}${postURL}" -A "${userAgent}" -o "${targetDir}/${maxResImage}" "${maxResImageURL}" ;then
             	curlError=1
 	    fi 
           fi
@@ -150,23 +152,23 @@ do
         echo "No images found, checking for videos"
 
         # check for tumblr hosted videos
-        videoPlayers=$( grep -o -P "http[s]*://www.tumblr.com/video/.*/[0-9]*/[0-9]*/" <<< "$postPage" | sort | uniq)
-        for video in $videoPlayers
+        videoPlayers=$( grep -o -P "http[s]*://www.tumblr.com/video/.*/[0-9]*/[0-9]*/" <<< "${postPage}" | sort | uniq)
+        for video in ${videoPlayers}
         do
-          echo "Found tumblr-hosted video $video"
+          echo "Found tumblr-hosted video ${video}"
           # get video link and type
-          videoSource=$(curl "${curlOptions[@]}" -b "$cookieFile" --referer "https://${url}${postURL}" -A "$userAgent" "$video" | grep -o -P "<source src=\"http[s]*://[^.]*.tumblr.com/video_file/.*?>")
+          videoSource=$(curl "${curlOptions[@]}" -b "${cookieFile}" --referer "https://${url}${postURL}" -A "${userAgent}" "${video}" | grep -o -P "<source src=\"http[s]*://[^.]*.tumblr.com/video_file/.*?>")
           # get video url
-          videoURL=$( grep -o -P "http[s]*://[^.]*.tumblr.com/video_file/[[:0-9A-Za-z]*/]*[0-9]*/tumblr_[A-Za-z0-9]*" <<< "$videoSource" )
+          videoURL=$( grep -o -P "http[s]*://[^.]*.tumblr.com/video_file/[[:0-9A-Za-z]*/]*[0-9]*/tumblr_[A-Za-z0-9]*" <<< "${videoSource}" )
           # construct filename with extension from type string
-          videoFile=$( grep -o -P "tumblr_.*?>" <<< "$videoSource" | sed -e 's/<source src=\"//g' -e 's/\" type=\"video\//./g' -e 's/\">//g' -e 's/\//\_/g')
+          videoFile=$( grep -o -P "tumblr_.*?>" <<< "${videoSource}" | sed -e 's/<source src=\"//g' -e 's/\" type=\"video\//./g' -e 's/\">//g' -e 's/\//\_/g')
           # download video (if it doesn't exist)
-          if [ -e "$targetDir/$videoFile" ]
+          if [ -e "${targetDir}/${videoFile}" ]
           then
             echo "Video exists, skipping."
           else
-            echo "Downloading video $videoURL"
-            if ! curl "${curlOptions[@]}" -L -b "$cookieFile" --referer "https://${url}${postURL}" -A "$userAgent" -o "$targetDir/$videoFile" "$videoURL"; then 
+            echo "Downloading video ${videoURL}"
+            if ! curl "${curlOptions[@]}" -L -b "${cookieFile}" --referer "https://${url}${postURL}" -A "${userAgent}" -o "${targetDir}/${videoFile}" "${videoURL}"; then 
             	 curlError=1
             fi
           fi
@@ -177,19 +179,19 @@ do
           # gather embedded video urls
           otherSource=""
           # check for instagram video
-          otherSource=$(echo "$otherSource"; echo "$postPage" | grep -o -P "http[s]*://www.instagram.com/p/[A-Za-z0-9]*")
+          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://www.instagram.com/p/[A-Za-z0-9]*")
           # check fou youtube video
-          otherSource=$(echo "$otherSource"; echo "$postPage" | grep -o -P "http[s]*://www.youtube.com/embed/.*?\?" | sed 's/\?//g')
+          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://www.youtube.com/embed/.*?\?" | sed 's/\?//g')
           # check for vine
-          otherSource=$(echo "$otherSource"; echo "$postPage" | grep -o -P "http[s]*://vine.co/v/.*?/")
+          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://vine.co/v/.*?/")
           # check for vimeo
-          otherSource=$(echo "$otherSource"; echo "$postPage" | grep -o -P "http[s]*://player.vimeo.com/video/[0-9]*")
+          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://player.vimeo.com/video/[0-9]*")
           # check for dailymotion
-          otherSource=$(echo "$otherSource"; echo "$postPage" | grep -o -P "http[s]*://www.dailymotion.com/embed/video/[A-Za-z0-9]*")
+          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://www.dailymotion.com/embed/video/[A-Za-z0-9]*")
           # check for brightcove
-          otherSource=$(echo "$otherSource"; echo "$postPage" | grep -o -P "http[s]*://players.brightcove.net/.*/index.html\?videoId=[0-9]*")
+          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://players.brightcove.net/.*/index.html\?videoId=[0-9]*")
           # add expressions for other video sites here like this:
-          #otherSource=$(echo "$otherSource"; echo "$postPage" | grep -o "http[s]*://www.example.com/embed/video/[A-Za-z0-9]*")
+          #otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o "http[s]*://www.example.com/embed/video/[A-Za-z0-9]*")
 
           # if video links were found, try youtube-dl
           if [ ! -z "$otherSource" ]
@@ -197,7 +199,7 @@ do
             for otherVid in $otherSource
             do
               echo "Found embedded video $otherVid, attempting download via youtube-dl..."
-              if ! youtube-dl "$otherVid" -o "$targetDir/%(title)s_%(duration)s.%(ext)s" -ciw ; then
+              if ! youtube-dl "$otherVid" -o "${targetDir}/%(title)s_%(duration)s.%(ext)s" -ciw ; then
               	curlError=1
 	      fi
             done
@@ -210,9 +212,9 @@ do
       fi
 
       # if no error occured, enter page as downloaded
-      if [[ $curlError -eq 0 ]]
+      if [[ ${curlError} -eq 0 ]]
       then
-        echo "$postURL" >> "$targetDir/articles.txt"
+        echo "${postURL}" >> "${targetDir}/articles.txt"
       else
         echo "Some error occured during downloading. No articles.txt entry created."
       fi
@@ -220,7 +222,7 @@ do
     fi
   done
   # get link to next archive page
-  archiveLink=$(echo "$archivePage" | grep -o -P "id=\"next_page_link\" href=\".*?\"" | sed -e 's/id=\"next_page_link\" href=\"//g' -e 's/\"//g')
+  archiveLink=$(echo "${archivePage}" | grep -o -P "id=\"next_page_link\" href=\".*?\"" | sed -e 's/id=\"next_page_link\" href=\"//g' -e 's/\"//g')
   # check if we are at the end of the archive (no link is returned)
   if [ -z "${archiveLink}" ]
   then
