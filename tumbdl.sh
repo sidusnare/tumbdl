@@ -33,7 +33,7 @@
 # global curl options
 # to disable progress bar, replace with '-s'
 # to enable verbose mode, add '-v'
-curlOptions=( '--progress-bar'  '-v' )
+curlOptions=( '--progress-bar' '-v' )
 userAgent='Mozilla/5.0 (Windows NT 6.1; WOW64; rv:47.0) Gecko/20100101 Firefox/47.0'
 
 # check usage
@@ -73,9 +73,9 @@ while getopts c:u:h opts; do
 	esac
 done
 shift $(( OPTIND - 1))
-url=$1
-targetDir=$2
-if [ $# -ne 2 ]; then
+url="${1}"
+targetDir="${2}"
+if [ "${#}" -ne 2 ]; then
 	echo -e "${HELP}"
 	exit 1
 fi
@@ -133,9 +133,9 @@ do
         for image in ${baseImages}
         do
           # get the image name of image with highest resolution
-          maxResImage=$(echo "${imageLinks}" | grep -o "${image}.*" | sort -n | head -n 1)
+          maxResImage=$( grep -o "${image}.*" <<< "${imageLinks}" | sort -n | head -n 1)
           # get full image url
-          maxResImageURL=$(echo "${imageLinks}" | grep "${maxResImage}")
+          maxResImageURL=$( grep "${maxResImage}" <<< "${imageLinks}")
           # download image (if it doesn't exist)
           if [ -e "${targetDir}/${maxResImage}" ]
           then
@@ -179,24 +179,24 @@ do
           # gather embedded video urls
           otherSource=""
           # check for instagram video
-          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://www.instagram.com/p/[A-Za-z0-9]*")
+          otherSource="${otherSource} $( grep -o -P "http[s]*://www.instagram.com/p/[A-Za-z0-9]*" <<< "${postPage}")"
           # check fou youtube video
-          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://www.youtube.com/embed/.*?\?" | sed 's/\?//g')
+          otherSource="${otherSource} $( grep -o -P "http[s]*://www.youtube.com/embed/.*?\?" | sed 's/\?//g' <<< "${postPage}" )"
           # check for vine
-          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://vine.co/v/.*?/")
+          otherSource="${otherSource} $( grep -o -P "http[s]*://vine.co/v/.*?/" <<< "${postPage}" )"
           # check for vimeo
-          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://player.vimeo.com/video/[0-9]*")
+          otherSource="${otherSource} $( grep -o -P "http[s]*://player.vimeo.com/video/[0-9]*" <<< "${postPage}" )"
           # check for dailymotion
-          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://www.dailymotion.com/embed/video/[A-Za-z0-9]*")
+          otherSource="${otherSource} $( grep -o -P "http[s]*://www.dailymotion.com/embed/video/[A-Za-z0-9]*" <<< "${postPage}" )"
           # check for brightcove
-          otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o -P "http[s]*://players.brightcove.net/.*/index.html\?videoId=[0-9]*")
+          otherSource="${otherSource} $( grep -o -P "http[s]*://players.brightcove.net/.*/index.html\?videoId=[0-9]*" <<< "${postPage}" )"
           # add expressions for other video sites here like this:
-          #otherSource=$(echo "$otherSource"; echo "${postPage}" | grep -o "http[s]*://www.example.com/embed/video/[A-Za-z0-9]*")
+          #otherSource="${otherSource} $( grep -o "http[s]*://www.example.com/embed/video/[A-Za-z0-9]*" <<< "${postPage}" )"
 
           # if video links were found, try youtube-dl
-          if [ ! -z "$otherSource" ]
+          if [ ! -z "${otherSource}" ]
           then
-            for otherVid in $otherSource
+            for otherVid in ${otherSource}
             do
               echo "Found embedded video $otherVid, attempting download via youtube-dl..."
               if ! youtube-dl "$otherVid" -o "${targetDir}/%(title)s_%(duration)s.%(ext)s" -ciw ; then
